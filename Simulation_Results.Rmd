@@ -1,0 +1,493 @@
+--
+title: "Simulation Results for Control Input Synthesis"
+author: "Ruiqi Chen"
+date: "`r Sys.Date()`"
+output: html_document
+  toc: true
+  toc_float: true
+  number_sections: true
+  df_print: paged
+---
+
+# Summary of endpoint error for B = Id
+
+```{r, setup, include=FALSE}
+library(tidyverse)
+library(here)
+
+shw_nl_syn_for_ln_mdl <- FALSE
+selected_sc <- c(0.1, 0.5)
+selected_sc_str <- "_drift_perturbation_combined"  # For file naming
+
+dat <- read_csv(here("data", "error_summary.csv")) %>%
+  rename(Horizon = `T`, Error = error, Method = method, Model = model) %>%
+  # mutate(Method = recode(Method, "backward" = "backward_push",
+  #                        "forward" = "forward_pull")) %>%  # Handle older data
+  mutate(
+    Method = factor(Method,
+                    levels = c(
+                      "linearized_origin",
+                      "linearized",
+                      "forward_pull",
+                      "backward_push",
+                      "forward_final_state",
+                      "backward_initial_state",
+                      "forward_nominal_state",
+                      "backward_nominal_state",
+                      "naive"
+                    ),
+                    labels = c(
+                      "Linearized at origin",
+                      "Linearized at x0",
+                      "Forward pull",
+                      "Backward push",
+                      "Forward final state",
+                      "Backward final state",
+                      "Forward nominal state",
+                      "Backward nominal state",
+                      "Naive"
+                    ), order = TRUE),
+    Model = factor(Model, levels = c(
+      "Stable linear", "Unstable linear", "MINDy",
+      "Monostable tanh RNN", "Bistable tanh RNN",
+      "Small norm tanh RNN"
+    ), ordered = TRUE),
+    Log10_error = log10(Error)
+  )
+
+# Filter out uninteresting methods;
+# Filter out cases where Mcond > 1e4 or ivp_error > 1e-1 (if you use
+# smart_inverse in the synthesis, this should be very rare)
+dat <- dat %>%
+  filter(!Method %in% c("Linearized at origin", "Backward push", "Forward pull",
+                        "Forward final state",
+                        "Backward final state", "Naive")) %>%
+  filter(is.na(Mcond) | Mcond <= 1e4, is.na(ivp_error) | ivp_error <= 1e-1)
+
+# Keep only the cases with selected scaling factor
+if ("scaling" %in% colnames(dat)) {
+  dat <- dat %>%
+    filter(scaling %in% selected_sc) %>%
+    mutate(scaling = factor(
+      scaling, levels = c(0.1, 0.5),
+      labels = c("Small deviation", "Large deviation")
+    ))
+} else {
+  selected_sc_str <- ""
+}
+
+# Filter out nonlinear method for linear models
+if (!shw_nl_syn_for_ln_mdl) {
+  dat <- dat %>%
+    filter(!(Model %in% c("Stable linear", "Unstable linear") &
+               !Method %in% c("Linearized at x0", "Linearized at origin")))
+}
+
+# Merge model types
+dat <- dat %>%
+  mutate(Model_combined = fct_collapse(Model,
+    "Linear" = c("Stable linear", "Unstable linear"),
+    "Big norm tanh RNN" = c("Monostable tanh RNN", "Bistable tanh RNN")
+  ))
+
+# Summarize data, merging several model types
+dat_summary <- dat %>%
+  group_by(Horizon, Model_combined, Method, scaling) %>%
+  summarise(
+    sem_log_error = sd(Log10_error) / sqrt(n()),
+    std_log_error = sd(Log10_error),
+    mean_log_error = mean(Log10_error),
+    mean_plus_std = mean_log_error + std_log_error,
+    mean_minus_std = mean_log_error - std_log_error,
+    CI_upper = mean_log_error + qt(0.975, df = n() - 1) * sem_log_error,
+    CI_lower = mean_log_error - qt(0.975, df = n() - 1) * sem_log_error,
+    q025 = quantile(Log10_error, 0.025),
+    q975 = quantile(Log10_error, 0.975),
+  ) %>%
+  ungroup()
+
+print("Data:")
+dat
+print("Summary:")
+dat_summary
+```
+
+Line plot separated by method:
+
+```{r, error-summary, fig.width=8, fig.height=4}
+fig <- dat_summary %>%
+  mutate(Model = Model_combined) %>%
+  select(-Model_combined) %>%
+  ggplot(aes(x = Horizon, y = mean_log_error)) +
+  geom_line(aes(color = Model)) +
+  geom_point(aes(color = Model, shape = Model)) +
+  # geom_errorbar(aes(ymin = mean_minus_std, ymax = mean_plus_std,
+  #                   color = Model, group = Model), width = 0.2) +
+  geom_ribbon(aes(ymin = CI_lower, ymax = CI_upper, fill = Model),
+              alpha = 0.2) +
+  facet_grid(rows = vars(Method), cols = vars(scaling), scales = "free_y") +
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1") +
+  scale_x_log10(breaks = c(0.25, 1, 4, 16, 64),
+                labels = c("0.25", "1", "4", "16", "64")) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    text = element_text(size = 14),
+    strip.text = element_text(size = 12)
+  ) +
+  guides(fill = guide_legend(nrow = 2, byrow = TRUE),
+         color = guide_legend(nrow = 2, byrow = TRUE)) +
+  labs(x = "Prediction horizon",
+    y = "Log10 relative error",
+    color = "Model",
+    # caption = paste("Excluding computationally problematic cases;",
+    #                 "error band shows 95% confidence interval.")
+  )
+
+if (shw_nl_syn_for_ln_mdl) {
+  figname <- paste0("error_summary_full", selected_sc_str, ".pdf")
+} else {
+  figname <- paste0("error_summary", selected_sc_str, ".pdf")
+}
+ggsave(here("figures", figname),
+       plot = fig, width = 6, height = 8)
+```
+
+Line plot separated by model:
+
+```{r, error-summary-by-model, fig.width=8, fig.height=6}
+fig <- dat_summary %>%
+  mutate(Model = Model_combined) %>%
+  select(-Model_combined) %>%
+  ggplot(aes(x = Horizon, y = mean_log_error)) +
+  geom_line(aes(color = Method, linetype = Method)) +
+  geom_point(aes(color = Method, shape = Method)) +
+  # geom_errorbar(aes(ymin = mean_minus_std, ymax = mean_plus_std,
+  #                   color = Method, group = Method), width = 0.2) +
+  geom_ribbon(aes(ymin = CI_lower, ymax = CI_upper, fill = Method),
+              alpha = 0.2) +
+  facet_grid(rows = vars(Model), cols = vars(scaling), scales = "free_y") +
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1") +
+  scale_x_log10(breaks = c(0.25, 1, 4, 16, 64),
+                labels = c("0.25", "1", "4", "16", "64")) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    text = element_text(size = 14),
+    strip.text = element_text(size = 11)
+  ) +
+  guides(fill = guide_legend(nrow = 2, byrow = TRUE),
+         color = guide_legend(nrow = 2, byrow = TRUE)) +
+  labs(x = "Prediction horizon",
+    y = "Log10 relative error",
+    color = "Method",
+    # caption = paste("Excluding computationally problematic cases;",
+    #                 "error band shows 95% confidence interval.")
+  )
+
+if (shw_nl_syn_for_ln_mdl) {
+  figname <- paste0("error_summary_by_model_full", selected_sc_str, ".pdf")
+} else {
+  figname <- paste0("error_summary_by_model", selected_sc_str, ".pdf")
+}
+ggsave(here("figures", figname),
+       plot = fig, width = 6, height = 8)
+
+# fig
+```
+
+Get trial-by-trial comparison of different methods:
+
+```{r, error-scatter-setup, include=FALSE}
+dat_trials <- dat %>%
+  filter(Method %in% c("Forward nominal state", "Backward nominal state", "Linearized at x0"),
+         !Model %in% c("Stable linear", "Unstable linear"),
+         Horizon <= 64) %>%
+  group_by(Horizon, Model, model_idx, experiment_idx, scaling) %>%
+  pivot_wider(id_cols = c("Horizon", "Model_combined", "Model", "model_idx", "experiment_idx", "scaling"),
+              names_from = Method, values_from = Log10_error) %>%
+  mutate(Horizon = factor(Horizon))
+```
+
+Scatter plot for forward vs linearized, separated by model:
+
+```{r, error-scatter-forward, fig.width=8, fig.height=4}
+
+# Scatter plot of the error distribution
+fig_scatter <- dat_trials %>%
+  ungroup() %>%
+  ggplot(aes(x = `Forward nominal state`,
+             y = `Linearized at x0`, color = Horizon)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
+  # geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  # geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
+  scale_color_viridis_d() +
+  labs(x = "log10 error (Forward nominal state)",
+       y = "log10 error (Linearized at x0)",
+       color = "Horizon") +
+  facet_grid(rows = vars(Model_combined), cols = vars(scaling), scales = "free") +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    text = element_text(size = 13),
+    strip.text = element_text(size = 11)
+  )
+
+ggsave(here("figures", paste0("error_scatter_forward_linearized", selected_sc_str, ".pdf")),
+       plot = fig_scatter, width = 6, height = 8)
+```
+
+Scatter plot for backward vs linearized, separated by model:
+
+```{r, error-scatter-backward, fig.width=8, fig.height=4}
+
+# Scatter plot of the error distribution
+fig_scatter <- dat_trials %>%
+  ungroup() %>%
+  ggplot(aes(x = `Backward nominal state`,
+             y = `Linearized at x0`, color = Horizon)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
+  # geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  # geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
+  scale_color_viridis_d() +
+  labs(x = "log10 error (Backward nominal state)",
+       y = "log10 error (Linearized at x0)",
+       color = "Horizon") +
+  facet_grid(rows = vars(Model_combined), cols = vars(scaling), scales = "free") +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    text = element_text(size = 13),
+    strip.text = element_text(size = 11)
+  )
+
+ggsave(here("figures", paste0("error_scatter_backward_linearized", selected_sc_str, ".pdf")),
+       plot = fig_scatter, width = 6, height = 8)
+```
+
+Scatter plot for (backward/linearized) vs (forward/linearized) separated by model:
+
+```{r, error-scatter, fig.width=8, fig.height=4}
+# Compute the error of the nonlinear methods with respect to the linearized method
+dat_normalized <- dat_trials %>%
+  mutate(across(c(`Backward nominal state`, `Forward nominal state`),
+                ~ . - `Linearized at x0`)) %>%
+  select(-`Linearized at x0`) %>%
+  ungroup()
+
+# Scatter plot of the error distribution
+fig_scatter <- dat_normalized %>%
+  ggplot(aes(x = `Forward nominal state`, y = `Backward nominal state`, color = Horizon)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
+  scale_color_viridis_d() +
+  labs(x = "log10 error (Forward vs. Linearized)",
+       y = "log10 error (Backward vs. Linearized)",
+       color = "Horizon") +
+  facet_grid(rows = vars(Model_combined), cols = vars(scaling), scales = "free") +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    text = element_text(size = 13),
+    strip.text = element_text(size = 11)
+  )
+
+ggsave(here("figures", paste0("error_scatter", selected_sc_str, ".pdf")),
+       plot = fig_scatter, width = 6, height = 8)
+```
+
+# Summary of endpoint error for underactuated systems
+
+```{r, setup-underact, include=FALSE}
+
+library(tidyverse)
+library(here)
+
+x1_criterion_str <- "_approx_reachable"  # or ""
+x1_criterion <- switch(x1_criterion_str,
+  "_numeric_reachable" = "numerically reachable",
+  "_approx_reachable" = "approximately reachable",
+  "random"
+)
+input_file <- here("data", paste0("NonIdInput", x1_criterion_str, "_error.csv"))
+sc_selected <- 0.1
+sc_selected_str <- "_x0p1"  # For file naming
+
+dat_underact <- read_csv(input_file) %>%
+  rename(Horizon = `T`, Error = error, Method = method, Model = model,
+         input_dim = K) %>%
+  mutate(
+    Method = factor(Method,
+                    levels = c(
+                      "linearized_origin",
+                      "linearized",
+                      "forward_pull",
+                      "backward_push",
+                      "forward_final_state",
+                      "backward_initial_state",
+                      "forward_nominal_state",
+                      "backward_nominal_state",
+                      "naive"
+                    ),
+                    labels = c(
+                      "Linearized at origin",
+                      "Linearized at x0",
+                      "Forward pull",
+                      "Backward push",
+                      "Forward final state",
+                      "Backward initial state",
+                      "Forward nominal state",
+                      "Backward nominal state",
+                      "Naive"
+                    ), order = TRUE),
+    Model = factor(Model, levels = c(
+      "Stable linear", "Unstable linear", "MINDy",
+      "Monostable tanh RNN", "Bistable tanh RNN",
+      "Small norm tanh RNN"
+    ), ordered = TRUE),
+    Log10_error = log10(Error),
+    input_dim = as.factor(input_dim),
+    Horizon = as.factor(Horizon)
+  )
+
+# Only consider "Backward nominal state" and "Forward nominal state" methods
+# Only consider small norm tanh RNN model
+# Filter out cases where Mcond > 1e4 or ivp_error > 1e-1
+dat_underact <- dat_underact %>%
+  filter(Method %in% c("Backward nominal state", "Forward nominal state", "Linearized at x0")) %>%
+  filter(Horizon %in% c("0.25", "0.5", "1", "2", "4")) %>%
+  filter(input_dim %in% c("1", "16", "32", "64", "96", "128")) %>%
+  filter(Model == "Small norm tanh RNN") %>%
+  filter(is.na(Mcond) | Mcond <= 1e4, is.na(ivp_error) | ivp_error <= 1e-1)
+
+# Only consider scaling factor = 1
+if ("scaling" %in% colnames(dat_underact)) {
+  dat_underact <- dat_underact %>%
+    filter(scaling == sc_selected)
+} else {
+  sc_selected_str <- ""
+}
+
+# Summarize data
+dat_underact_summary <- dat_underact %>%
+  group_by(Horizon, Model, Method, input_dim, Input_type) %>%
+  summarise(
+    sem_log_error = sd(Log10_error) / sqrt(n()),
+    std_log_error = sd(Log10_error),
+    mean_log_error = mean(Log10_error),
+    mean_plus_std = mean_log_error + std_log_error,
+    mean_minus_std = mean_log_error - std_log_error,
+    CI_upper = mean_log_error + qt(0.975, df = n() - 1) * sem_log_error,
+    CI_lower = mean_log_error - qt(0.975, df = n() - 1) * sem_log_error,
+    q025 = quantile(Log10_error, 0.025),
+    q975 = quantile(Log10_error, 0.975),
+  ) %>%
+  ungroup()
+
+print("Underactuated experiments data:")
+dat_underact
+print("Underactuated experiments summary:")
+dat_underact_summary
+```
+
+Density plot for log10 relative error for underactuated systems:
+
+```{r, underactuated-density, fig.width=8, fig.height=4}
+fig_underact_density <- dat_underact %>%
+  filter(Input_type == "One-hot", Method == "Forward nominal state") %>%
+  ggplot(aes(x = Log10_error, fill = Horizon)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_viridis_d(option = "C") +
+  theme_bw() +
+  facet_wrap(~input_dim, nrow = 2, labeller = "label_both",
+             scales = "free_y") +
+  labs(x = "Log10 relative error",
+       y = "Density",
+       fill = "Horizon")
+
+ggsave(here("figures", paste0("underactuated_density", x1_criterion_str,
+                              sc_selected_str, ".pdf")),
+       plot = fig_underact_density, width = 6.6, height = 4.4)
+```
+
+A more concise density plot:
+
+```{r, underactuated-density-concise, fig.width=8, fig.height=4}
+fig_underact_density <- dat_underact %>%
+  filter(Input_type == "One-hot", Method == "Forward nominal state",
+         Horizon == 1) %>%
+  ggplot(aes(x = Log10_error, fill = input_dim)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_viridis_d(option = "C") +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    text = element_text(size = 14),
+    strip.text = element_text(size = 12)
+  ) +
+  labs(title = paste0("Forward nominal state synthesis, T = 1, d = ",
+                      max(as.numeric(levels(dat_underact$input_dim))),
+                      ",\none-hot input, ", x1_criterion, " x1"),
+       x = "Log10 relative error",
+       y = "Density",
+       fill = "Input dimension")
+
+ggsave(here("figures", paste0("underactuated_density_concise", x1_criterion_str,
+                              sc_selected_str, ".pdf")),
+       plot = fig_underact_density, width = 6.6, height = 4.4)
+```
+
+Line plot for mean and standard deviation of log10 relative error for underactuated systems:
+
+```{r, underactuated-error-summary, fig.width=8, fig.height=4}
+fig_underact <- dat_underact_summary %>%
+  filter(Input_type == "One-hot") %>%
+  ggplot(aes(x = input_dim, y = mean_log_error, color = Horizon)) +
+  geom_line(aes(group = Horizon)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_minus_std, ymax = mean_plus_std,
+                    color = Horizon, group = Horizon), width = 0.2) +
+  facet_wrap(~Method, nrow = 1, scales = "fixed") +
+  # facet_grid(rows = vars(Input_type), cols = vars(Method),
+  #            scales = "fixed", switch = "y") +
+  scale_color_viridis_d(option = "C") +
+  scale_fill_viridis_d(option = "C") +
+  scale_x_discrete() +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    text = element_text(size = 14),
+    strip.text = element_text(size = 12)
+  ) +
+  # guides(fill = guide_legend(nrow = 2, byrow = TRUE),
+  #        color = guide_legend(nrow = 2, byrow = TRUE)) +
+  labs(x = "Input dimension",
+       y = "Log10 relative error",
+       color = "Horizon",
+       linetype = "Method",
+       shape = "Model",
+       caption = paste("Excluding computationally problematic cases;",
+                       "errorbar shows standard deviation.")
+       )
+
+figname_underact <- paste0("underactuated_error_summary", x1_criterion_str,
+                           sc_selected_str, ".pdf")
+
+ggsave(here("figures", figname_underact),
+       plot = fig_underact, width = 6.6, height = 4.4)
+
+fig_underact
+```

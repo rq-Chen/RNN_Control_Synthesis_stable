@@ -1,0 +1,8 @@
+*
+
+!.gitignore
+!README.md
+!Synthesis.py
+!visualizations.py
+!experiments.ipynb
+!Simulation_Results.Rmd
