@@ -7,21 +7,23 @@ This repository contains the code to implement the synthesis of constant inputs 
 ### Statement of the problem
 
 Consider a nonlinear system with dynamics:
+
 $$
 \begin{align*}
-\dot{x} & = N(x) + I\,,\\
-N(x) &= Wf(x) - Dx\,,
+\dot{x} & = N(x) + I	,\\
+N(x) &= Wf(x) - Dx	,
 \end{align*}
 $$
 
 where $x \in \mathbb{R}^{n}$ is the hidden state, $I \in \mathbb{R}^{n}$ is a constant input, $W \in \mathbb{R}^{n \times n}$ is the connectivity matrix, $f$ is an element-wise nonlinear activation function, $D \in \mathbb{R}^{n \times n}$ is a diagonal matrix with positive diagonal elements, indicating the decay rate.
 
 Under very general assumptions, we can prove that the flow of the autonumous dynamics $\Phi_{t}: \mathbb{R}^{n} \to \mathbb{R}^{n}$ and the inverse flow $\Psi_{t}$ exists for all time $t$, and they are the inverse of each other:
+
 $$
 \begin{align*}
-\partial_{t}\Phi_{t}(x^{0}) &= N(\Phi_{t}(x^{0}))\,,\\
-\partial_{t}\Psi_{t}(x^{0}) &= -N(\Psi_{t}(x^{0}))\,,\\
-\Psi_{t} &= \Phi_{t}^{-1}\,.
+\partial_{t}\Phi_{t}(x^{0}) &= N(\Phi_{t}(x^{0}))	,\\
+\partial_{t}\Psi_{t}(x^{0}) &= -N(\Psi_{t}(x^{0}))	,\\
+\Psi_{t} &= \Phi_{t}^{-1}	.
 \end{align*}
 $$
 
@@ -30,6 +32,7 @@ $$
 ### Synthesis for linear systems
 
 If $f$ is linear, without loss of generality, we assume $f$ is the identity function (otherwise multiply $W$ with the slope of $f$ and replace $f$ with the identity function) and define $A = W - D$. It can be proved that whenever $e^{TA} - \text{Id}$ is invertible, the following input $I$ drives the system from $x(0) = x^{0}$ to $x(T) = x^{1}$ in exactly time $T$:
+
 $$
 I = (e^{TA} - \text{Id})^{-1}A(x^{1} - e^{TA}x^{0}) = (e^{TA} - \text{Id})^{-1}A(x^{1} - x^{0}) - Ax^{0}
 $$
@@ -38,7 +41,7 @@ where $\text{Id} \in \mathbb{R}^{n \times n}$ is the identity matrix.
 
 Two sufficient conditions for the invertibility of $e^{TA} - \text{Id}$ are:
 
-1. The spectral norm of the connectivity matrix $|\!|\!|W|\!|\!|$ is smaller than the minimum decay rate $\lambda_{\min}(D)$.
+1. The spectral norm of the connectivity matrix $|||W|||$ is smaller than the minimum decay rate $\lambda_{\min}(D)$.
 2. $\lambda = i\frac{2\pi l}{T}, \forall l \in \mathbb{Z}$ is not an eigenvalue of $A = W - D$, namely $e^{TA}$ does not have an eigenvalue of 1.
 
 ## Synthesis for nonlinear systems
@@ -50,24 +53,27 @@ For nonlinear systems, we can only provide an approximate to the actual input th
 #### `linearized`
 
 As the name suggests, we let $A := DN(x^{0})$ and define the "linearized" system as:
+
 $$
 \begin{aligned}
-\dot{z}(t) & = Az(t) + N(x^{0}) + I\,, \\
-z(0) & = z^{0} := \mathbf{0}\,, \\
-z^{1} & := x^{1} - x^{0}\,.
+\dot{z}(t) & = Az(t) + N(x^{0}) + I	, \\
+z(0) & = z^{0} := \mathbf{0}	, \\
+z^{1} & := x^{1} - x^{0}	.
 \end{aligned}
 $$
 
 The following input $I$ will drive the linearized system from $z^{0}$ to $z^{1}$ in exact time $T$:
+
 $$
-I = (e^{TA} - \text{Id})^{-1}A(x^{1} - x^{0}) - N(x^{0})\,.
+I = (e^{TA} - \text{Id})^{-1}A(x^{1} - x^{0}) - N(x^{0})	.
 $$
 
 #### `linearzed_origin`
 
 This method linearized the system at the origin (which is always a fixed point of the autonomous dynamics) rather than $x^{0}$. Let $A := DN(\mathbf{0})$, the synthesis is given by
+
 $$
-I = (e^{TA} - \text{Id})^{-1}A(x^{1} - e^{TA}x^{0})\,.
+I = (e^{TA} - \text{Id})^{-1}A(x^{1} - e^{TA}x^{0})	.
 $$
 
 ### Third generation methods
@@ -77,15 +83,17 @@ This section covers the methods presented in the final version of this paper.
 #### `backward_nominal_state`
 
 The synthesis is given by
+
 $$
-I = \left[ e^{-TDN(\Psi_{T}(x^{1}))} - \text{Id} \right]^{-1}DN(\Psi_{T}(x^{1}))\left( x^{0} - \Psi_{T}(x^{1}) \right)\,.
+I = \left[ e^{-TDN(\Psi_{T}(x^{1}))} - \text{Id} \right]^{-1}DN(\Psi_{T}(x^{1}))\left( x^{0} - \Psi_{T}(x^{1}) \right)	.
 $$
 
 #### `forward_nominal_state`
 
 The synthesis is given by
+
 $$
-I = \left[ e^{TDN(\Phi_{T}(x^{0}))} - \text{Id} \right]^{-1}DN(\Phi_{T}(x^{0}))\left( x^{1} - \Phi_{T}(x^{0}) \right)\,.
+I = \left[ e^{TDN(\Phi_{T}(x^{0}))} - \text{Id} \right]^{-1}DN(\Phi_{T}(x^{0}))\left( x^{1} - \Phi_{T}(x^{0}) \right)	.
 $$
 
 ### Second generation methods
@@ -95,15 +103,17 @@ This section covers the methods developed during the review process of this pape
 #### `backward_initial_state`
 
 The synthesis is given by
+
 $$
-I = \left[ \text{Id} - e^{-TDN(x^{0})} \right]^{-1}DN(x^{0})\left( \Psi_{T}(x^{1}) - x^{0} \right)\,.
+I = \left[ \text{Id} - e^{-TDN(x^{0})} \right]^{-1}DN(x^{0})\left( \Psi_{T}(x^{1}) - x^{0} \right)	.
 $$
 
 #### `forward_final_state`
 
 The synthesis is given by
+
 $$
-I = \left[ \text{Id} - e^{TDN(x^{1})} \right]^{-1}DN(x^{1})\left( \Phi_{T}(x^{0}) - x^{1} \right)\,.
+I = \left[ \text{Id} - e^{TDN(x^{1})} \right]^{-1}DN(x^{1})\left( \Phi_{T}(x^{0}) - x^{1} \right)	.
 $$
 
 ### First generation methods
@@ -117,6 +127,7 @@ This method is simply called "backward" method in the preprint. It is now called
 For nonlinear case, denote $D$ as the differential operator and define $B_{t}(x) := DN(\Psi_{t}(x)) = -D + Wf'(\Psi_{t}(x))$.
 
 It can be proved that whenever $e^{TB_{T}(x^{1})} - \text{Id}$ is invertible, the following input $I$ drives the system from $x(0) = x^{0}$ to $x(T) = x^{1}$ in exact time $T$:
+
 $$
 \begin{aligned}
 I & = [D \Psi_{T}(x^{1})]^{-1}[e^{TB_{T}(x^{1})} - \text{Id}]^{-1}B_{T}(x^{1})(\Psi_{T}(x^{1}) - x^{0}) + \zeta(T) \\
@@ -128,10 +139,11 @@ where the error term $\zeta(T)$ is defined implicitly.
 
 Two sufficient conditions for the invertibility of $e^{TB_{T}(x^{1})} - \text{Id}$ are:
 
-1. $|f'(0)|\cdot|\!|\!|W|\!|\!| < \lambda_{\min}(D)$.
+1. $|f'(0)|\cdot|||W||| < \lambda_{\min}(D)$.
 2. $\lambda = i\frac{2\pi l}{T}, \forall l \in \mathbb{Z}$ is not an eigenvalue of $B_{T}(x^{1})$.
 
 Also note that if $f$ is the identity function, then $B_{T}(x) \equiv A = W - D$, and
+
 $$
 \begin{align*}
 I &= e^{TA}(e^{TA} - \text{Id})^{-1}A(e^{-TA}x^{1} - x^{0})\\
@@ -146,6 +158,7 @@ and the error term is zero.
 This method is simply called "forward" method in the preprint. It is now called "forward pull" as it involves pulling back a vector using the backward flow $\Psi_{T}$ evaluated at $\Phi_{T}(x^{0})$, the terminal state of the forward flow starting from $x^{0}$.
 
 The synthesis is given by 
+
 $$
 \begin{aligned}
 I & = D \Psi_{T}(\Phi_{T}(x^{0}))[e^{-TA_{T}(x^{0})} - \text{Id}]^{-1}A_{T}(x^{0})(\Phi_{T}(x^{0}) - x^{1}) + \zeta(T)
@@ -186,6 +199,7 @@ For `torchdiffeq` version `0.2.3` and `torch` version `2.0+`:
 ### Matrix inversion
 
 In the "backward push" method, we need to compute the inverse of $e^{TB_{T}(x^{1})} - \text{Id}$; in the "forward pull" method, we need to compute the inverse of $e^{-TA_{T}(x^{0})} - \text{Id}$; in linearized methods, we need to compute the inverse of $e^{TA} - \text{Id}$. When $T$ gets large, these matrices can become very ill-conditioned, leading to numerical instability. Note that, however, we have the following identities:
+
 $$
 \begin{aligned}
 [e^{TA} - \text{Id}]^{-1} & = [e^{TA}(\text{Id} - e^{-TA})]^{-1} = [\text{Id} - e^{-TA}]^{-1}e^{-TA}\\
@@ -196,15 +210,17 @@ $$
 In our examples, the decay part is usually large relatively to the nonlinear part, so the eigenvalues of $A$ usually have negative real parts. This means that the matrix $e^{TA}$ is usually well-conditioned, while $e^{-TA}$ is ill-conditioned. Therefore, this trick is most useful when using "forward pull" method. 
 
 For the "forward pull" method, we have:
+
 $$
-[e^{-TA_{T}(x^{0})} - \text{Id}]^{-1} = [e^{-TA_{T}(x^{0})}(\text{Id} - e^{TA_{T}(x^{0})})]^{-1} = [\text{Id} - e^{TA_{T}(x^{0})}]^{-1}e^{TA_{T}(x^{0})}\,.
+[e^{-TA_{T}(x^{0})} - \text{Id}]^{-1} = [e^{-TA_{T}(x^{0})}(\text{Id} - e^{TA_{T}(x^{0})})]^{-1} = [\text{Id} - e^{TA_{T}(x^{0})}]^{-1}e^{TA_{T}(x^{0})}	.
 $$
 
 So the numerical synthesis is given by
+
 $$
 \begin{aligned}
 I & = D \Psi_{T}(\Phi_{T}(x^{0}))[e^{-TA_{T}(x^{0})} - \text{Id}]^{-1}A_{T}(x^{0})(\Phi_{T}(x^{0}) - x^{1}) \\
-  & = D \Psi_{T}(\Phi_{T}(x^{0}))[\text{Id} - e^{TA_{T}(x^{0})}]^{-1}e^{TA_{T}(x^{0})}A_{T}(x^{0})(\Phi_{T}(x^{0}) - x^{1})\,.
+  & = D \Psi_{T}(\Phi_{T}(x^{0}))[\text{Id} - e^{TA_{T}(x^{0})}]^{-1}e^{TA_{T}(x^{0})}A_{T}(x^{0})(\Phi_{T}(x^{0}) - x^{1})	.
 \end{aligned}
 $$
 
